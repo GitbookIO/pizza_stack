@@ -1,0 +1,4 @@
+{"type":"assistant","message":{"id":"msg_example01","type":"message","role":"assistant","content":[{"type":"tool_use","id":"toolu_01","name":"WebFetch","input":{"url":"https://tomatopy.pizza/docs/developer-documentation/pizzastack-api"}}]}}
+{"type":"result","tool_use_id":"toolu_01","content":"# PizzaStack API\n\nBase URL: https://api.tomatopy.pizza/v1\n\n## Pipeline\nacquire -> slice -> simmer -> base -> assemble -> bake"}
+{"type":"assistant","message":{"id":"msg_example02","type":"message","role":"assistant","content":[{"type":"tool_use","id":"toolu_02","name":"Bash","input":{"command":"python3 make_pizza.py"}}]}}
+{"type":"result","tool_use_id":"toolu_02","content":"Acquiring tomato... OK (tom_abc123)\nSlicing... OK (slc_def456)\nSimmering... OK (sce_ghi789)\nCreating base... OK (bas_jkl012)\nAssembling... OK (pza_mno345)\nBaking... OK (bkd_pqr678)\nOverall score: 0.94 - PASS"}

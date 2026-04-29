@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.env
+data/
+logs/
+harness/results/
+.venv/
+*.egg-info/
+dist/
+build/
+.claude/
+harness/manual/traces/
+harness/manual/log.csv
+project_spec.md
+INTERNAL_NOTES.md
+analysis/phase1_findings.md

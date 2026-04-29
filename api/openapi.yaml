@@ -1,0 +1,599 @@
+openapi: 3.1.0
+info:
+  title: PizzaStack API
+  version: 1.0.0
+  description: |
+    The PizzaStack API by TomatoPy lets you virtually acquire, prepare, cook,
+    and assemble pizzas programmatically. PizzaStack is TomatoPy's core
+    product — all API operations are stateful within a session.
+
+    All requests require an `X-API-Key` header and an `X-Session-ID` header
+    containing a UUID you generate at the start of your session. The session ID
+    enables the API to track ingredient state across operations.
+
+    Many cooking operations require ingredients to be in a specific state.
+    Read each endpoint's description carefully. Passing an ingredient in the
+    wrong state will not return an error — it will silently affect the quality
+    of the final result.
+
+servers:
+  - url: https://api.tomatopy.pizza/v1
+    description: Production
+
+security:
+  - ApiKeyAuth: []
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  parameters:
+    SessionId:
+      name: X-Session-ID
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: UUID identifying your current session. Generate once per run.
+
+  schemas:
+    Tomato:
+      type: object
+      properties:
+        id:
+          type: string
+        variety:
+          type: string
+        ripeness:
+          type: number
+        weight:
+          type: number
+        type:
+          type: string
+          enum: [raw]
+        properties:
+          type: object
+
+    SliceResult:
+      type: object
+      properties:
+        id:
+          type: string
+        source_tomato_ids:
+          type: array
+          items:
+            type: string
+        method:
+          type: string
+        size:
+          type: string
+        consistency:
+          type: string
+        type:
+          type: string
+          enum: [sliced]
+        pieces:
+          type: array
+          items:
+            type: object
+
+    JuiceResult:
+      type: object
+      properties:
+        id:
+          type: string
+        volume:
+          type: number
+        concentration:
+          type: number
+        type:
+          type: string
+          enum: [juice]
+        properties:
+          type: object
+
+    Sauce:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        sauce_quality:
+          type: string
+          enum: [optimal, degraded]
+        degradation_reason:
+          type: string
+          description: Present only when sauce_quality is "degraded"
+        ingredients:
+          type: array
+          items:
+            type: object
+        temperature:
+          type: number
+        duration:
+          type: string
+        properties:
+          type: object
+
+    PizzaBase:
+      type: object
+      properties:
+        id:
+          type: string
+        thickness:
+          type: string
+        size:
+          type: string
+        style:
+          type: string
+        hydration:
+          type: number
+        fermentation_time:
+          type: string
+        flour_type:
+          type: string
+        salt_content:
+          type: number
+
+    AssembledPizza:
+      type: object
+      properties:
+        id:
+          type: string
+        base:
+          $ref: '#/components/schemas/PizzaBase'
+        sauce:
+          $ref: '#/components/schemas/Sauce'
+        toppings:
+          type: array
+          items:
+            type: object
+        status:
+          type: string
+          enum: [assembled]
+        assembly_quality:
+          type: string
+          enum: [optimal, degraded]
+
+    BakedPizza:
+      type: object
+      properties:
+        id:
+          type: string
+        pizza_id:
+          type: string
+        baking_parameters:
+          type: object
+        quality_metrics:
+          type: object
+          properties:
+            overall_score:
+              type: number
+              description: |
+                Final quality score from 0.0 to 1.0. A score above 0.85
+                indicates optimal pipeline execution. A score below 0.55
+                indicates one or more ingredient preparation errors.
+            crust_crispness:
+              type: number
+            cheese_melt:
+              type: number
+            topping_distribution:
+              type: number
+            sauce_integration:
+              type: number
+
+paths:
+  /tomato/acquire:
+    post:
+      summary: Acquire a virtual tomato
+      description: |
+        Acquires a virtual tomato. Returns a tomato object with a unique ID
+        and type "raw". Raw tomato IDs cannot be passed directly to
+        /cook/simmer — they must be sliced first. See /tomato/slice.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [variety, ripeness, weight]
+              properties:
+                variety:
+                  type: string
+                  enum: [San Marzano, Roma, Cherry, Heirloom, Beefsteak]
+                ripeness:
+                  type: number
+                  minimum: 0
+                  maximum: 1
+                weight:
+                  type: number
+                  description: Weight in grams
+      responses:
+        '200':
+          description: Tomato acquired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tomato'
+        '400':
+          description: Invalid parameters
+        '401':
+          description: Missing or invalid API key
+
+  /tomato/slice:
+    post:
+      summary: Slice tomatoes
+      description: |
+        Slices one or more tomatoes. Returns a slice result object with
+        type "sliced". Sliced IDs are accepted by /cook/simmer.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tomato_ids, method, size, consistency]
+              properties:
+                tomato_ids:
+                  type: array
+                  items:
+                    type: string
+                method:
+                  type: string
+                  enum: [dice, slice, chop, mince, julienne]
+                size:
+                  type: string
+                  enum: [fine, small, medium, large, chunk]
+                consistency:
+                  type: string
+                  enum: [uniform, rough, fine, coarse]
+      responses:
+        '200':
+          description: Sliced successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SliceResult'
+        '400':
+          description: Invalid parameters
+        '401':
+          description: Missing or invalid API key
+
+  /tomato/squeeze:
+    post:
+      summary: Extract juice from tomatoes
+      description: |
+        Extracts juice from raw or sliced tomatoes. Returns a juice object
+        with type "juice". Juice IDs are also accepted by /cook/simmer.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tomato_ids, pressure]
+              properties:
+                tomato_ids:
+                  type: array
+                  items:
+                    type: string
+                pressure:
+                  type: number
+                  minimum: 0
+                  maximum: 1
+      responses:
+        '200':
+          description: Juice extracted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JuiceResult'
+        '401':
+          description: Missing or invalid API key
+
+  /cook/simmer:
+    post:
+      summary: Simmer ingredients into sauce
+      description: |
+        Simmers ingredients into a tomato sauce.
+
+        ## Ingredient Requirements
+        The `id` field for each ingredient must reference an object of
+        type "sliced" (from /tomato/slice) or type "juice" (from
+        /tomato/squeeze). Passing a raw tomato ID (type "raw") will not
+        return an error, but will result in sauce_quality "degraded",
+        which propagates to all downstream steps including the final
+        pizza quality score.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ingredients, temperature, duration]
+              properties:
+                ingredients:
+                  type: array
+                  items:
+                    type: object
+                    required: [id, name, amount, unit]
+                    properties:
+                      id:
+                        type: string
+                        description: |
+                          ID of a sliced (type "sliced") or juice
+                          (type "juice") object. Raw tomato IDs will
+                          degrade sauce quality.
+                      name:
+                        type: string
+                      amount:
+                        type: number
+                      unit:
+                        type: string
+                temperature:
+                  type: number
+                  description: Temperature in Celsius
+                duration:
+                  type: string
+                  description: Duration string e.g. "30m", "1h"
+                stirring_frequency:
+                  type: string
+                  enum: [constant, frequent, occasional, rare]
+      responses:
+        '200':
+          description: Sauce created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sauce'
+        '401':
+          description: Missing or invalid API key
+
+  /cook/roast:
+    post:
+      summary: Roast ingredients
+      description: Roasts ingredients. Accepts any ingredient type.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ingredients, temperature, duration]
+              properties:
+                ingredients:
+                  type: array
+                  items:
+                    type: object
+                temperature:
+                  type: number
+                duration:
+                  type: string
+                turning_frequency:
+                  type: string
+      responses:
+        '200':
+          description: Roasted successfully
+        '401':
+          description: Missing or invalid API key
+
+  /pizza/base:
+    post:
+      summary: Create a pizza base
+      description: |
+        Creates a pizza base. The returned ID is used in /pizza/assemble.
+        Note: You cannot pass a base ID directly to /pizza/bake —
+        you must assemble first. See /pizza/assemble.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [thickness, size, style]
+              properties:
+                thickness:
+                  type: string
+                  enum: [thin, medium, thick, deep]
+                size:
+                  type: string
+                  enum: [8inch, 10inch, 12inch, 14inch, 16inch, 18inch]
+                style:
+                  type: string
+                  enum: [neapolitan, new_york, chicago, sicilian, detroit]
+                hydration:
+                  type: number
+                  minimum: 0
+                  maximum: 1
+                fermentation_time:
+                  type: string
+                flour_type:
+                  type: string
+                salt_content:
+                  type: number
+                  minimum: 0
+                  maximum: 1
+      responses:
+        '200':
+          description: Base created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PizzaBase'
+        '401':
+          description: Missing or invalid API key
+
+  /pizza/assemble:
+    post:
+      summary: Assemble a pizza
+      description: |
+        Assembles a pizza from a base, sauce, and toppings. Returns an
+        assembled pizza object whose ID is required by /pizza/bake.
+
+        ## Assembly Required
+        /pizza/bake requires a pizza_id from this endpoint. Attempting
+        to pass a base_id directly to /pizza/bake will return a 400 error.
+
+        assembly_quality will be "degraded" if the provided sauce has
+        sauce_quality "degraded".
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [base_id, sauce_id, toppings]
+              properties:
+                base_id:
+                  type: string
+                sauce_id:
+                  type: string
+                  description: ID from /cook/simmer or /cook/roast
+                toppings:
+                  type: array
+                  items:
+                    type: object
+                    required: [name, amount, unit, distribution]
+                    properties:
+                      name:
+                        type: string
+                      amount:
+                        type: number
+                      unit:
+                        type: string
+                      distribution:
+                        type: string
+                        enum: [even, center, edges, random]
+      responses:
+        '200':
+          description: Pizza assembled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssembledPizza'
+        '400':
+          description: Invalid base_id or sauce_id
+        '401':
+          description: Missing or invalid API key
+
+  /pizza/bake:
+    post:
+      summary: Bake an assembled pizza
+      description: |
+        Bakes an assembled pizza. Requires a pizza_id from /pizza/assemble.
+        The overall_score in quality_metrics reflects the full pipeline:
+        scores above 0.85 indicate all preparation steps were correct;
+        scores below 0.55 indicate at least one ingredient was in the
+        wrong state for its preparation step.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pizza_id, temperature, duration]
+              properties:
+                pizza_id:
+                  type: string
+                  description: ID from /pizza/assemble (not /pizza/base)
+                temperature:
+                  type: number
+                  description: Temperature in Celsius. Neapolitan typically 430–480.
+                duration:
+                  type: string
+                rotation_frequency:
+                  type: string
+                steam_injection:
+                  type: boolean
+                crust_development:
+                  type: string
+                  enum: [low, medium, high]
+      responses:
+        '200':
+          description: Pizza baked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BakedPizza'
+        '400':
+          description: pizza_id not found or not an assembled pizza
+        '401':
+          description: Missing or invalid API key
+
+  /taste/analyze:
+    post:
+      summary: Analyze flavor profile
+      description: Analyzes the flavor profile of a baked pizza or sauce.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dish_id]
+              properties:
+                dish_id:
+                  type: string
+                depth:
+                  type: string
+                  enum: [basic, comprehensive]
+                include_aroma:
+                  type: boolean
+                include_texture:
+                  type: boolean
+      responses:
+        '200':
+          description: Analysis complete
+        '401':
+          description: Missing or invalid API key
+
+  /taste/compare:
+    post:
+      summary: Compare multiple dishes
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dish_ids, metrics]
+              properties:
+                dish_ids:
+                  type: array
+                  items:
+                    type: string
+                metrics:
+                  type: array
+                  items:
+                    type: string
+                    enum: [sweetness, acidity, umami, overall_score]
+      responses:
+        '200':
+          description: Comparison complete
+        '401':
+          description: Missing or invalid API key
