@@ -16,12 +16,32 @@ The test surface is **PizzaStack**, a fictional pizza-making API by **TomatoPy**
 
 ## How It Works
 
-Each benchmark run gives an agent a task prompt, an API key, a session ID, and a docs URL. The agent must complete a multi-step pizza pipeline using the PizzaStack API. Two hidden quality traps test whether it actually read the docs:
+Each benchmark run gives an agent a task prompt, an API key, a session ID, and a docs URL. The agent must complete a multi-step pizza pipeline using the PizzaStack API. Three hidden traps test whether it actually read the docs:
 
 - **Slice before simmer:** Raw tomato IDs passed to `/cook/simmer` return HTTP 200 but with `sauce_quality: "degraded"`. The agent must call `/tomato/slice` first — documented but not enforced by the schema.
 - **Assemble before bake:** `/pizza/bake` requires a `pizza_id` from `/pizza/assemble`. Passing a `base_id` directly returns HTTP 400.
+- **Required `distribution` field:** Each topping in `/pizza/assemble` requires a `distribution` value (`even`, `center`, `edges`, or `random`). The field is documented in the full API reference but not in the quick-start guide, so an agent that reads only the quick-start gets an HTTP 422 on its first assemble call.
 
-Quality propagates through the pipeline. A correct run scores 0.90–0.98. A degraded run scores 0.35–0.50. The agent is asked to print PASS or FAIL based on the score.
+Quality propagates through the pipeline: a degraded sauce degrades the assembled pizza, which degrades the bake.
+
+---
+
+## Scoring
+
+There are two separate scores in this repo, and only one of them is used in the published findings.
+
+**The benchmark score (reported in findings).** After each run, `harness/manual/record_result.py` pulls the session's request log from the API server and scores it on 16 criteria in `score_session()`. The agent never sees this score.
+
+| Category | Points | What's checked |
+|---|---|---|
+| Pipeline completeness | 6 | A successful call to each of acquire, slice, simmer, base, assemble, bake |
+| Pipeline ordering | 2 | acquire → slice → simmer; assemble → bake |
+| Prompt compliance | 5 | Variety, ripeness, weight, style, and size + thickness match the task prompt |
+| Reasonable parameters | 3 | Simmer temperature 80–100, bake temperature 400–500, bake duration 1–3 minutes |
+
+Results are recorded as points (e.g. `16/16`) and a normalized score (points / 16).
+
+**The in-API quality score (not used in findings).** `/pizza/bake` returns an `overall_score` and sub-scores to the agent. These come from `compute_final_score()` and `compute_sub_scores()` in `api/logic.py` and are a random draw within a band: 0.90–0.98 for an optimal pipeline, 0.35–0.50 for a degraded one. This is left over from an early version of the scoring and was kept so the API returns realistic-looking quality metrics; it is not the benchmark score.
 
 Behavioral analysis comes from two sources:
 - **Claude Code JSONL transcripts** — which tools the agent called, in what order, and whether it fetched docs before or after making API calls
@@ -36,7 +56,7 @@ pizza_stack/
 ├── api/                        # FastAPI backend (PizzaStack API)
 │   ├── main.py
 │   ├── models.py
-│   ├── logic.py                # Quality scoring + session store
+│   ├── logic.py                # In-API quality score + session store
 │   ├── logger.py               # JSONL request logging
 │   ├── openapi.yaml            # Canonical OpenAPI spec
 │   └── routes/
@@ -44,16 +64,15 @@ pizza_stack/
 │   └── manual/                 # Manual run protocol (active)
 │       ├── protocol.md         # Step-by-step guide
 │       ├── session_generator.py
-│       ├── record_result.py
-│       ├── log.csv
-│       └── traces/
+│       ├── record_result.py    # 16-point benchmark scorer (score_session)
+│       ├── log.csv             # Run log (not published)
+│       └── traces/             # Run transcripts (not published)
 ├── analysis/
 │   ├── parse_transcript.py     # Parses Claude Code JSONL transcripts
-│   ├── score.py                # Scoring + summary tables
+│   ├── score.py                # Summary tables across runs
 │   └── report.py               # Markdown report generation
 ├── docs-platforms/             # Platform deployment configs (future)
-├── requirements.txt
-└── project_spec.md
+└── requirements.txt
 ```
 
 ---
